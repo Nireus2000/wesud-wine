@@ -1927,12 +1927,65 @@ function getTypeLabel(type) {
   return labels[type] || type;
 }
 
-// Look up detailed wine info from the explorer wineList by matching price
+// _allExplorerWines built after wineList is defined (see below)
+let _allExplorerWines = [];
+
+function _norm(s) { return s.toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
 function findWineDetail(w) {
-  if (!w) return null;
-  for (const wines of Object.values(wineList)) {
-    const match = wines.find(e => e.price === w.price && e.type === w.type);
-    if (match) return match;
+  if (!w || !w.name) return null;
+  const wn = _norm(w.name);
+  // 1. Exact normalised name match
+  let match = _allExplorerWines.find(e => _norm(e.name) === wn);
+  if (match) return match;
+  // 2. Key-word overlap scoring
+  const stop = new Set(['the','with','del','des','de','du','der','las','les','los','doc','docg','pdo','pgi','cru','aoc','igt','and','cotes','chateau','domaine','estate','winery','varietal','wine','reserve','gran','reserva','brut','blanc','rouge','rose','bottle','vieilles','vignes']);
+  const words = s => s.toLowerCase().replace(/[^a-z0-9\s]/g,'').split(/\s+/).filter(x => x.length >= 3 && !stop.has(x));
+  const pw = words(w.name);
+  if (!pw.length) return null;
+  let best = 0, hit = null;
+  for (const e of _allExplorerWines) {
+    if (e.type !== w.type) continue;
+    const ew = words(e.name);
+    let sc = 0;
+    for (const p of pw) for (const q of ew) {
+      if (p === q) sc += 3;
+      else if (p.length > 3 && q.length > 3 && (p.includes(q) || q.includes(p))) sc += 2;
+    }
+    if (e.price === w.price) sc += 2;
+    if (sc > best) { best = sc; hit = e; }
+  }
+  return best >= 4 ? hit : null;
+}
+
+// Fallback Vivino data for pairing wines not in the explorer
+const _pairingVivino = {
+  'fevre vaulorent':{rating:4.3,count:2200}, 'idisma drios':{rating:4.0,count:600},
+  'ostertag heissenberg':{rating:4.2,count:800}, 'trimbach gewurztraminer':{rating:4.0,count:3500},
+  'guillerault iota sancerre':{rating:4.1,count:500}, 'bourgeois pouilly fume':{rating:4.0,count:7000},
+  'terlan vorberg':{rating:4.3,count:1200}, 'inama foscarino':{rating:4.2,count:2500},
+  'avantis agios chronos':{rating:4.1,count:400}, 'bhilar kha':{rating:4.0,count:300},
+  'tabali talinay':{rating:4.1,count:800}, 'leflaive macon verze':{rating:4.2,count:1500},
+  'gautherin chablis':{rating:4.1,count:1000}, 'janasse viognier':{rating:3.9,count:1100},
+  'masciarelli cvetic':{rating:4.2,count:1800}, 'castellada bianco':{rating:4.1,count:600},
+  'oddero barbera':{rating:4.2,count:3000}, 'zafeirakis foothills':{rating:4.0,count:300},
+  'lazaridi semillon':{rating:3.9,count:400}, 'boutaris grande reserve naoussa':{rating:4.1,count:1200},
+  'nals margreid':{rating:4.0,count:2000}, 'boisson meursault':{rating:4.3,count:400},
+  'janasse terre argile':{rating:4.1,count:1500}, 'poliziano nobile':{rating:4.2,count:5000},
+  'avantis agios chronos viognier':{rating:4.1,count:400}, 'dougos rapsani':{rating:4.0,count:500},
+  'mikulski hautes cotes':{rating:4.1,count:800}, 'racines cuvee chardonnay':{rating:4.2,count:600},
+  'bhilar vedao':{rating:4.1,count:400}, 'duckhorn decoy':{rating:4.0,count:8000},
+  'guy amiot meursault':{rating:4.2,count:700}, 'roxane matsa malagouzia':{rating:3.8,count:300},
+  'strofilia tabouri':{rating:3.9,count:200}, 'carillon puligny enseigneur':{rating:4.3,count:500},
+  'cosme chateauneuf pape red':{rating:4.3,count:4000}, 'muncagota barbaresco':{rating:4.4,count:1500},
+  'kikones chardonnay':{rating:4.0,count:300}, 'thimiopoulos alta':{rating:4.0,count:600}
+};
+function _findPairingVivino(name) {
+  if (!name) return null;
+  const n = name.toLowerCase();
+  for (const [key, val] of Object.entries(_pairingVivino)) {
+    const parts = key.split(' ');
+    if (parts.every(p => n.includes(p))) return val;
   }
   return null;
 }
@@ -1972,7 +2025,7 @@ function renderAboutMini(detail) {
 
 function renderWineCard(w, badge, cls, delay) {
   const detail = findWineDetail(w);
-  const viv = detail && detail.vivino ? detail.vivino : (vivinoData && w.name ? null : null);
+  const viv = (detail && detail.vivino) ? detail.vivino : _findPairingVivino(w.name);
   return `<div class="wine-card ${cls} fade-in" style="animation-delay: ${delay}s">
     <div class="badge">${badge}</div>
     <div class="wine-name">${w.name}</div>
@@ -1980,7 +2033,7 @@ function renderWineCard(w, badge, cls, delay) {
     <div class="wine-meta">${w.region} &middot; ${w.vintage}</div>
     <span class="wine-type-badge type-${w.type}">${getTypeLabel(w.type)}</span>
     <div class="wine-price">&euro; ${w.price} <span>${w.format}</span></div>
-    ${renderVivinoMini(detail ? detail.vivino : null)}
+    ${renderVivinoMini(viv)}
     ${renderTastingMini(detail)}
     ${renderAboutMini(detail)}
     <div class="rationale" style="margin-top:14px">
@@ -2011,7 +2064,7 @@ function renderBudgetDropdown(b, delay) {
         <div class="budget-wine-meta">${b.region} &middot; ${b.vintage}</div>
         <span class="wine-type-badge type-${b.type}">${getTypeLabel(b.type)}</span>
         <div class="budget-wine-price">&euro; ${b.price} <span>${b.format}</span></div>
-        ${renderVivinoMini(detail ? detail.vivino : null)}
+        ${renderVivinoMini((detail && detail.vivino) ? detail.vivino : _findPairingVivino(b.name))}
         ${renderTastingMini(detail)}
         <div class="budget-rationale"><p>${b.rationale || b.desc}</p></div>
       </div>
@@ -2973,6 +3026,8 @@ for (const wines of Object.values(wineList)) {
     if (vivinoData[w.id]) w.vivino = vivinoData[w.id];
   }
 }
+// Now build the flat lookup for findWineDetail matching
+for (const wines of Object.values(wineList)) { for (const w of wines) _allExplorerWines.push(w); }
 
 let wineActiveCategory = Object.keys(wineList)[0];
 let selectedWineId = null;
