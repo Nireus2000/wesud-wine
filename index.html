@@ -1927,7 +1927,52 @@ function getTypeLabel(type) {
   return labels[type] || type;
 }
 
+// Look up detailed wine info from the explorer wineList by matching price
+function findWineDetail(w) {
+  if (!w) return null;
+  for (const wines of Object.values(wineList)) {
+    const match = wines.find(e => e.price === w.price && e.type === w.type);
+    if (match) return match;
+  }
+  return null;
+}
+
+function renderVivinoMini(v) {
+  if (!v) return '';
+  const countFmt = v.count >= 1000 ? (v.count / 1000).toFixed(1).replace(/\.0$/,'') + 'K' : v.count;
+  return `<div style="display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 12px;background:rgba(166,29,55,0.04);border-radius:8px">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="#A61D37"><circle cx="12" cy="5" r="3"/><circle cx="7" cy="13" r="3"/><circle cx="17" cy="13" r="3"/><circle cx="12" cy="21" r="3"/></svg>
+    <span style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;color:#A61D37">${v.rating.toFixed(1)}</span>
+    <span style="font-size:11px;color:var(--text-secondary);font-weight:300">/5</span>
+    <span style="font-size:11px;color:var(--text-secondary);font-weight:300;margin-left:auto">${countFmt} ratings</span>
+  </div>`;
+}
+
+function renderTastingMini(detail) {
+  if (!detail || !detail.nose) return '';
+  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
+    <div style="background:rgba(91,58,74,0.03);border-radius:8px;padding:10px 12px">
+      <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text-secondary);font-weight:500;margin-bottom:3px">Nose</div>
+      <div style="font-size:11px;color:var(--charcoal);font-weight:300;line-height:1.4">${detail.nose}</div>
+    </div>
+    <div style="background:rgba(91,58,74,0.03);border-radius:8px;padding:10px 12px">
+      <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text-secondary);font-weight:500;margin-bottom:3px">Palate</div>
+      <div style="font-size:11px;color:var(--charcoal);font-weight:300;line-height:1.4">${detail.palate}</div>
+    </div>
+  </div>`;
+}
+
+function renderAboutMini(detail) {
+  if (!detail || !detail.desc) return '';
+  return `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--divider)">
+    <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--wine-light);font-weight:500;margin-bottom:6px">About this wine</div>
+    <div style="font-size:12px;line-height:1.6;color:var(--charcoal);font-weight:300">${detail.desc}</div>
+  </div>`;
+}
+
 function renderWineCard(w, badge, cls, delay) {
+  const detail = findWineDetail(w);
+  const viv = detail && detail.vivino ? detail.vivino : (vivinoData && w.name ? null : null);
   return `<div class="wine-card ${cls} fade-in" style="animation-delay: ${delay}s">
     <div class="badge">${badge}</div>
     <div class="wine-name">${w.name}</div>
@@ -1935,7 +1980,10 @@ function renderWineCard(w, badge, cls, delay) {
     <div class="wine-meta">${w.region} &middot; ${w.vintage}</div>
     <span class="wine-type-badge type-${w.type}">${getTypeLabel(w.type)}</span>
     <div class="wine-price">&euro; ${w.price} <span>${w.format}</span></div>
-    <div class="rationale">
+    ${renderVivinoMini(detail ? detail.vivino : null)}
+    ${renderTastingMini(detail)}
+    ${renderAboutMini(detail)}
+    <div class="rationale" style="margin-top:14px">
       <div class="rationale-label">Why this wine</div>
       <p>${w.rationale || w.desc}</p>
     </div>
@@ -1944,6 +1992,7 @@ function renderWineCard(w, badge, cls, delay) {
 
 function renderBudgetDropdown(b, delay) {
   if (!b) return '';
+  const detail = findWineDetail(b);
   return `<div class="budget-toggle fade-in" style="animation-delay: ${delay}s" id="budgetToggle" onclick="toggleBudget()">
     <div class="budget-toggle-header">
       <div class="bt-left">
@@ -1962,6 +2011,8 @@ function renderBudgetDropdown(b, delay) {
         <div class="budget-wine-meta">${b.region} &middot; ${b.vintage}</div>
         <span class="wine-type-badge type-${b.type}">${getTypeLabel(b.type)}</span>
         <div class="budget-wine-price">&euro; ${b.price} <span>${b.format}</span></div>
+        ${renderVivinoMini(detail ? detail.vivino : null)}
+        ${renderTastingMini(detail)}
         <div class="budget-rationale"><p>${b.rationale || b.desc}</p></div>
       </div>
     </div>
