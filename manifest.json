@@ -3,7 +3,7 @@
   "short_name": "WeSud",
   "description": "Wine pairing experience by WeSud - Wine Spectator Best of Award of Excellence 2025",
   "start_url": ".",
-  "display": "standalone",
+  "display": "browser",
   "background_color": "#3D2433",
   "theme_color": "#5B3A4A",
   "orientation": "any",
