@@ -2213,28 +2213,28 @@ function _asLadderWine(w, whyText) {
   };
 }
 
-// Pick a mid-tier "Value for Money" bottle: matching type, priced below the
-// primary but above the cheapest tier. Returns 2nd or 3rd cheapest bottle of
-// matching type, excluding the other ladder wines by name.
-function deriveValueWine(primary, excludeNames) {
-  if (!primary) return null;
+// Pick a mid-tier "Value for Money" bottle strictly inside the price window
+// (costBottle.price, secondary.price). Matches primary.type and excludes the
+// other ladder wines by name. Returns null if no candidate fits the window.
+function deriveValueWine(primary, secondary, costBottle, excludeNames) {
+  if (!primary || !costBottle) return null;
+  const floor = Number(costBottle.price);
+  const ceiling = Number(secondary && secondary.price) || Infinity;
+  if (!Number.isFinite(floor) || !(floor < ceiling)) return null;
   const excl = new Set(excludeNames.filter(Boolean).map(n => n.toLowerCase()));
-  const candidates = [];
-  for (const [cat, wines] of Object.entries(wineList)) {
-    if (cat === 'By the Glass') continue;
+  let pick = null;
+  for (const wines of Object.values(wineList)) {
     for (const w of wines) {
       if (!w || w.type !== primary.type) continue;
+      if ((w.format || '').toLowerCase().includes('glass')) continue;
       if (excl.has((w.name || '').toLowerCase())) continue;
       const p = Number(w.price);
-      if (!Number.isFinite(p) || p <= 0) continue;
-      candidates.push(w);
+      if (!Number.isFinite(p) || p <= floor || p >= ceiling) continue;
+      if (!pick || p < Number(pick.price)) pick = w;
     }
   }
-  if (!candidates.length) return null;
-  candidates.sort((a, b) => Number(a.price) - Number(b.price));
-  // Pick 2nd cheapest if available, else 3rd, else 1st
-  const pick = candidates[1] || candidates[2] || candidates[0];
-  const why = `A thoughtfully priced <span class="highlight">${pick.grape}</span> from ${pick.region} that honours the same style as our top recommendation. At &euro; ${pick.price}, it delivers the character of the pairing without the ceremony.`;
+  if (!pick) return null;
+  const why = `A thoughtfully priced <span class="highlight">${pick.grape}</span> from ${pick.region} at &euro; ${pick.price} -- the sweet spot between the sommelier's picks and the budget bottle.`;
   return _asLadderWine(pick, why);
 }
 
@@ -2251,28 +2251,27 @@ function deriveGlassPour(primary, excludeNames) {
   return _asLadderWine(pick, why);
 }
 
-// Split the hand-curated budget entry by format into (costBottle, glassPour)
-function _splitBudgetByFormat(b) {
-  if (!b) return { costBottle: null, glassPour: null };
-  const fmt = (b.format || '').toLowerCase();
-  if (fmt.includes('glass')) return { costBottle: null, glassPour: b };
-  return { costBottle: b, glassPour: null };
-}
-
-// Given a primary wine and the curated budget entry, produce the three lower
-// tiers: Value for Money, Cost-Conscious, By the Glass.
+// Build the three lower tiers (Value for Money, Cost-Conscious, By the Glass)
+// so they form a strictly monotonic ladder: secondary > value > cost.
+// Cost-Conscious is always the catalogue-cheapest matching-type bottle --
+// curated budget bottles never fill this tier, which prevents the pricing
+// inversion that occurs when a hand-picked "budget" bottle is pricier than
+// the catalogue floor.
 function buildLadder(primary, secondary, curatedBudget) {
-  const { costBottle: curatedCost, glassPour: curatedGlass } = _splitBudgetByFormat(curatedBudget);
-  const excludeBase = [primary && primary.name, secondary && secondary.name, curatedBudget && curatedBudget.name];
+  const curatedFmt = ((curatedBudget && curatedBudget.format) || '').toLowerCase();
+  const curatedIsGlass  = curatedFmt.includes('glass');
+  const curatedIsBottle = !!curatedBudget && !curatedIsGlass;
 
-  const costBottle = curatedCost || (function() {
-    // Derive cheapest bottle of matching type, excluding the known ones
-    const excl = new Set(excludeBase.filter(Boolean).map(n => n.toLowerCase()));
+  const excludeBase = [primary && primary.name, secondary && secondary.name].filter(Boolean);
+
+  // #4 Cost-Conscious -- cheapest matching-type bottle in the catalogue.
+  const costBottle = (function() {
+    const excl = new Set(excludeBase.map(n => n.toLowerCase()));
     let cheapest = null;
-    for (const [cat, wines] of Object.entries(wineList)) {
-      if (cat === 'By the Glass') continue;
+    for (const wines of Object.values(wineList)) {
       for (const w of wines) {
         if (!w || w.type !== primary.type) continue;
+        if ((w.format || '').toLowerCase().includes('glass')) continue;
         if (excl.has((w.name || '').toLowerCase())) continue;
         const p = Number(w.price);
         if (!Number.isFinite(p) || p <= 0) continue;
@@ -2284,8 +2283,31 @@ function buildLadder(primary, secondary, curatedBudget) {
     return _asLadderWine(cheapest, why);
   })();
 
-  const glassPour = curatedGlass || deriveGlassPour(primary, [...excludeBase, costBottle && costBottle.name]);
-  const valueWine = deriveValueWine(primary, [...excludeBase, costBottle && costBottle.name, glassPour && glassPour.name]);
+  // #3 Value for Money -- prefer the curated budget bottle when it lands
+  // strictly inside (cost, secondary); otherwise derive.
+  const secondaryPrice = Number(secondary && secondary.price) || Infinity;
+  let valueWine = null;
+  if (curatedIsBottle && costBottle) {
+    const p = Number(curatedBudget.price);
+    if (Number.isFinite(p) && p > Number(costBottle.price) && p < secondaryPrice) {
+      valueWine = _asLadderWine(curatedBudget, curatedBudget.rationale);
+    }
+  }
+  if (!valueWine) {
+    const exclNames = [...excludeBase, costBottle && costBottle.name];
+    valueWine = deriveValueWine(primary, secondary, costBottle, exclNames);
+  }
+
+  // #5 By the Glass -- curated glass if present, otherwise derived.
+  const exclForGlass = [...excludeBase, costBottle && costBottle.name, valueWine && valueWine.name];
+  const glassPour = curatedIsGlass
+    ? _asLadderWine(curatedBudget, curatedBudget.rationale)
+    : deriveGlassPour(primary, exclForGlass);
+
+  // Defensive monotonicity guard: drop the Value tier if anything slipped
+  // through that would break ordering.
+  if (valueWine && costBottle && Number(valueWine.price) <= Number(costBottle.price)) valueWine = null;
+  if (valueWine && secondary && Number(valueWine.price) >= Number(secondary.price)) valueWine = null;
 
   return { valueWine, costBottle, glassPour };
 }
@@ -2325,7 +2347,7 @@ function renderPairing() {
       <div class="pairing-for">Recommended pairing for</div>
       <div class="pairing-dish-name">${dishName}</div>
       ${renderWineCard(p, "Sommelier's Choice", "primary", 0.1)}
-      ${renderWineCard(s, "Alternative", "secondary", 0.2)}
+      ${renderWineCard(s, "Sommelier's Secret", "secondary", 0.2)}
       ${renderBudgetDropdown(valueWine, 0.3, 'value')}
       ${renderBudgetDropdown(costBottle, 0.35, 'cost')}
       ${renderBudgetDropdown(glassPour, 0.4, 'glass')}
@@ -2388,7 +2410,7 @@ function renderPairing() {
     <div class="pairing-for">Recommended pairing for your selection</div>
     <div class="multi-dishes">${dishTags2.join('<span class="multi-dish-tag"><span class="plus">&</span></span>')}</div>
     ${renderWineCard(primaryWine, "Sommelier's Choice", "primary", 0.1)}
-    ${renderWineCard(secondaryWine, "Alternative", "secondary", 0.2)}
+    ${renderWineCard(secondaryWine, "Sommelier's Secret", "secondary", 0.2)}
     ${renderBudgetDropdown(mLadder.valueWine, 0.3, 'value')}
     ${renderBudgetDropdown(mLadder.costBottle, 0.35, 'cost')}
     ${renderBudgetDropdown(mLadder.glassPour, 0.4, 'glass')}
