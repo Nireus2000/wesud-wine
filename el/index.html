@@ -2241,7 +2241,13 @@ function deriveValueWine(primary, secondary, costBottle, excludeNames) {
 // Pick a By-the-Glass pour matching the primary's type
 function deriveGlassPour(primary, excludeNames) {
   if (!primary) return null;
-  const glasses = wineList['By the Glass'] || [];
+  const glasses = [];
+  for (const wines of Object.values(wineList)) {
+    for (const w of wines) {
+      if (!w || !(w.format || '').toLowerCase().includes('glass')) continue;
+      glasses.push(w);
+    }
+  }
   if (!glasses.length) return null;
   const excl = new Set(excludeNames.filter(Boolean).map(n => n.toLowerCase()));
   const sameType = glasses.filter(w => w.type === primary.type && !excl.has((w.name || '').toLowerCase()));
@@ -2339,8 +2345,11 @@ function renderPairing() {
       return;
     }
     const dishName = findDishName(id);
-    const p = pairing.primary;
-    const s = pairing.secondary;
+    let p = pairing.primary;
+    let s = pairing.secondary;
+    // Keep the ladder strictly monotonic top-down: Choice is the pricier of
+    // the two hand-curated picks, Secret the cheaper.
+    if (p && s && Number(s.price) > Number(p.price)) { const t = p; p = s; s = t; }
     const b = budgetWines[id];
     const { valueWine, costBottle, glassPour } = buildLadder(p, s, b);
     panel.innerHTML = `<div class="pairing-section fade-in">
@@ -2405,6 +2414,10 @@ function renderPairing() {
 
   const dishTags2 = ids.map(id => `<span class="multi-dish-tag">${findDishName(id)}</span>`);
 
+  // Keep the ladder monotonic top-down (Choice >= Secret in price).
+  if (primaryWine && secondaryWine && Number(secondaryWine.price) > Number(primaryWine.price)) {
+    const t = primaryWine; primaryWine = secondaryWine; secondaryWine = t;
+  }
   const mLadder = buildLadder(primaryWine, secondaryWine, budgetWine);
   panel.innerHTML = `<div class="pairing-section fade-in">
     <div class="pairing-for">Προτεινόμενος συνδυασμός για την επιλογή σας</div>
