@@ -619,7 +619,9 @@ main {
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 14px; color: var(--sage);
+  flex-shrink: 0;
 }
+.budget-toggle-header .bt-icon svg { display: block; }
 .budget-toggle-header .bt-label {
   font-size: 12px; font-weight: 500; color: var(--charcoal);
   letter-spacing: 0.5px;
@@ -2149,11 +2151,16 @@ function renderWineCard(w, badge, cls, delay) {
   </div>`;
 }
 
-// Variant config for the three secondary tiers
+// Variant config for the three secondary tiers — all outline SVG icons,
+// sized for the 28px circle wrapper, inheriting color via currentColor.
+const _ICON_LEAF  = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></svg>';
+const _ICON_GEM   = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3 8 9l4 12 4-12-3-6"/><path d="M2 9h20"/></svg>';
+const _ICON_GLASS = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 3h9l-.9 8.4a3.6 3.6 0 0 1-3.6 3.2 3.6 3.6 0 0 1-3.6-3.2L7.5 3z"/><path d="M12 14.6V20"/><path d="M8.5 20h7"/></svg>';
+
 const _variantConfig = {
-  cost:  { label: 'Cost-Conscious Choice', icon: '&#9827;',  toggleId: 'costToggle'  }, // club suit
-  value: { label: 'Value for Money',       icon: '&#9830;',  toggleId: 'valueToggle' }, // diamond
-  glass: { label: 'By the Glass',          icon: '&#127863;', toggleId: 'glassToggle' } // wine glass
+  cost:  { label: 'Cost-Conscious Choice', icon: _ICON_LEAF,  toggleId: 'costToggle'  },
+  value: { label: 'Value for Money',       icon: _ICON_GEM,   toggleId: 'valueToggle' },
+  glass: { label: 'By the Glass',          icon: _ICON_GLASS, toggleId: 'glassToggle' }
 };
 
 function renderBudgetDropdown(b, delay, variant) {
