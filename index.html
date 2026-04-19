@@ -357,6 +357,75 @@ main {
   color: var(--wine); border-bottom-color: var(--wine);
 }
 
+.price-filter {
+  padding: 12px 20px 14px;
+  border-bottom: 1px solid var(--divider);
+  background: var(--warm-white);
+  flex-shrink: 0;
+}
+.price-filter-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.pf-label {
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--text-secondary); font-weight: 600;
+}
+.pf-readout {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 15px; color: var(--wine); font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.pf-readout .pf-sep { color: var(--text-secondary); margin: 0 6px; font-weight: 400; }
+.pf-reset {
+  background: none; border: none; cursor: pointer;
+  font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--gold); font-weight: 600; padding: 2px 0;
+  transition: opacity 0.2s;
+}
+.pf-reset:hover { opacity: 0.7; }
+.pf-reset:disabled { color: var(--text-secondary); opacity: 0.4; cursor: default; }
+
+.price-slider-wrap {
+  position: relative; height: 28px;
+}
+.price-slider-track {
+  position: absolute; top: 13px; left: 0; right: 0; height: 3px;
+  background: var(--divider); border-radius: 2px;
+}
+.price-slider-range {
+  position: absolute; top: 13px; height: 3px;
+  background: var(--wine); border-radius: 2px;
+}
+.price-slider-wrap input[type=range] {
+  position: absolute; top: 0; left: 0; width: 100%; height: 28px;
+  -webkit-appearance: none; appearance: none;
+  background: transparent; pointer-events: none;
+  margin: 0;
+}
+.price-slider-wrap input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--wine);
+  box-shadow: 0 2px 6px rgba(91,58,74,0.25);
+  cursor: pointer; pointer-events: auto;
+  position: relative; z-index: 2;
+}
+.price-slider-wrap input[type=range]::-moz-range-thumb {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--wine);
+  box-shadow: 0 2px 6px rgba(91,58,74,0.25);
+  cursor: pointer; pointer-events: auto;
+}
+.price-slider-wrap input[type=range]::-webkit-slider-runnable-track {
+  background: transparent; height: 3px;
+}
+.pf-count {
+  margin-top: 6px; font-size: 10px; letter-spacing: 0.5px;
+  color: var(--text-secondary); text-align: right;
+  font-style: italic;
+}
+
 .menu-list {
   flex: 1; overflow-y: auto; padding: 8px 0;
   -webkit-overflow-scrolling: touch;
@@ -760,6 +829,7 @@ footer .wine-spectator {
     <!-- LEFT: MENU -->
     <div class="menu-panel">
       <div class="category-tabs" id="tabs"></div>
+      <div id="priceFilter"></div>
       <div class="menu-list" id="menuList"></div>
     </div>
 
@@ -4449,6 +4519,12 @@ for (const wines of Object.values(wineList)) { for (const w of wines) _allExplor
 let wineActiveCategory = Object.keys(wineList)[0];
 let selectedWineId = null;
 
+// Price filter state — compute bounds from full catalogue
+const _allPrices = _allExplorerWines.map(w => w.price).filter(p => typeof p === 'number');
+const PRICE_MIN = Math.floor(Math.min(..._allPrices));
+const PRICE_MAX = Math.ceil(Math.max(..._allPrices));
+let priceFilter = { min: PRICE_MIN, max: PRICE_MAX };
+
 function renderWineExplorerTabs() {
   const tabs = document.getElementById('tabs');
   const cats = Object.keys(wineList);
@@ -4463,9 +4539,85 @@ function selectWineCategory(cat) {
   renderWineList();
 }
 
+function renderPriceFilter() {
+  const el = document.getElementById('priceFilter');
+  if (!el) return;
+  if (currentMode !== 'explore') { el.innerHTML = ''; return; }
+  const isDefault = priceFilter.min === PRICE_MIN && priceFilter.max === PRICE_MAX;
+  const maxLabel = priceFilter.max >= PRICE_MAX ? `&euro;${PRICE_MAX}+` : `&euro;${priceFilter.max}`;
+  el.innerHTML = `
+    <div class="price-filter">
+      <div class="price-filter-header">
+        <span class="pf-label">Price Range</span>
+        <span class="pf-readout">&euro;${priceFilter.min} <span class="pf-sep">&mdash;</span> ${maxLabel}</span>
+        <button class="pf-reset" onclick="resetPriceFilter()" ${isDefault ? 'disabled' : ''}>Reset</button>
+      </div>
+      <div class="price-slider-wrap">
+        <div class="price-slider-track"></div>
+        <div class="price-slider-range" id="pfRange"></div>
+        <input type="range" id="pfMin" min="${PRICE_MIN}" max="${PRICE_MAX}" step="1" value="${priceFilter.min}" oninput="onPriceSlide('min', this.value)">
+        <input type="range" id="pfMax" min="${PRICE_MIN}" max="${PRICE_MAX}" step="1" value="${priceFilter.max}" oninput="onPriceSlide('max', this.value)">
+      </div>
+      <div class="pf-count" id="pfCount"></div>
+    </div>`;
+  updatePriceRangeBar();
+}
+
+function updatePriceRangeBar() {
+  const bar = document.getElementById('pfRange');
+  if (!bar) return;
+  const span = PRICE_MAX - PRICE_MIN || 1;
+  const leftPct = ((priceFilter.min - PRICE_MIN) / span) * 100;
+  const rightPct = ((priceFilter.max - PRICE_MIN) / span) * 100;
+  bar.style.left = leftPct + '%';
+  bar.style.right = (100 - rightPct) + '%';
+}
+
+function onPriceSlide(which, val) {
+  const v = parseInt(val, 10);
+  if (which === 'min') {
+    priceFilter.min = Math.min(v, priceFilter.max - 1);
+    const inp = document.getElementById('pfMin');
+    if (inp && parseInt(inp.value,10) !== priceFilter.min) inp.value = priceFilter.min;
+  } else {
+    priceFilter.max = Math.max(v, priceFilter.min + 1);
+    const inp = document.getElementById('pfMax');
+    if (inp && parseInt(inp.value,10) !== priceFilter.max) inp.value = priceFilter.max;
+  }
+  // Update readout + range bar without full re-render (preserves thumb focus)
+  const readout = document.querySelector('#priceFilter .pf-readout');
+  if (readout) {
+    const maxLabel = priceFilter.max >= PRICE_MAX ? `&euro;${PRICE_MAX}+` : `&euro;${priceFilter.max}`;
+    readout.innerHTML = `&euro;${priceFilter.min} <span class="pf-sep">&mdash;</span> ${maxLabel}`;
+  }
+  const resetBtn = document.querySelector('#priceFilter .pf-reset');
+  if (resetBtn) resetBtn.disabled = (priceFilter.min === PRICE_MIN && priceFilter.max === PRICE_MAX);
+  updatePriceRangeBar();
+  renderWineList();
+}
+
+function resetPriceFilter() {
+  priceFilter = { min: PRICE_MIN, max: PRICE_MAX };
+  renderPriceFilter();
+  renderWineList();
+}
+
 function renderWineList() {
   const list = document.getElementById('menuList');
-  const wines = wineList[wineActiveCategory];
+  const allWines = wineList[wineActiveCategory];
+  const wines = allWines.filter(w => w.price >= priceFilter.min && w.price <= priceFilter.max);
+  const countEl = document.getElementById('pfCount');
+  if (countEl) {
+    if (wines.length === allWines.length) {
+      countEl.textContent = `${allWines.length} wines in this category`;
+    } else {
+      countEl.textContent = `${wines.length} of ${allWines.length} wines match`;
+    }
+  }
+  if (wines.length === 0) {
+    list.innerHTML = `<div style="padding:40px 24px;text-align:center;color:var(--text-secondary);font-size:13px;font-style:italic">No wines in this price range.<br><button onclick="resetPriceFilter()" style="margin-top:12px;background:none;border:1px solid var(--wine);color:var(--wine);padding:8px 16px;border-radius:20px;font-size:11px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;font-family:inherit">Reset filter</button></div>`;
+    return;
+  }
   list.innerHTML = wines.map(w => {
     const typeClass = 'type-' + w.type;
     const vBadge = w.vivino ? `<span style="font-size:11px;color:#A61D37;font-weight:500;margin-left:auto;white-space:nowrap">&#9733; ${w.vivino.rating.toFixed(1)}</span>` : '';
@@ -4608,6 +4760,8 @@ function setMode(mode) {
     selectedDishes.clear();
     renderTabs();
     renderMenu();
+    const pf = document.getElementById('priceFilter');
+    if (pf) pf.innerHTML = '';
     panel.innerHTML = `<div class="empty-state">
       <svg class="glass-icon" viewBox="0 0 64 64" fill="none">
         <path d="M22 8h20l-3 24c-.5 4-4 7-8 7h-1c-4 0-7.5-3-8-7L22 8z" stroke="#5B3A4A" stroke-width="1.5"/>
@@ -4621,6 +4775,7 @@ function setMode(mode) {
   } else {
     selectedWineId = null;
     renderWineExplorerTabs();
+    renderPriceFilter();
     renderWineList();
     panel.innerHTML = `<div class="empty-state">
       <svg class="glass-icon" viewBox="0 0 64 64" fill="none">
