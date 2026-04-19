@@ -387,21 +387,26 @@ main {
 .pf-reset:disabled { color: var(--text-secondary); opacity: 0.4; cursor: default; }
 
 .price-slider-wrap {
-  position: relative; height: 28px;
+  position: relative; height: 22px;
 }
 .price-slider-track {
-  position: absolute; top: 13px; left: 0; right: 0; height: 3px;
+  position: absolute; top: 50%; left: 0; right: 0; height: 3px;
+  transform: translateY(-50%);
   background: var(--divider); border-radius: 2px;
 }
 .price-slider-range {
-  position: absolute; top: 13px; height: 3px;
+  position: absolute; top: 50%; height: 3px;
+  transform: translateY(-50%);
   background: var(--wine); border-radius: 2px;
 }
 .price-slider-wrap input[type=range] {
-  position: absolute; top: 0; left: 0; width: 100%; height: 28px;
+  position: absolute; top: 0; left: 0; width: 100%; height: 22px;
   -webkit-appearance: none; appearance: none;
   background: transparent; pointer-events: none;
-  margin: 0;
+  margin: 0; padding: 0;
+}
+.price-slider-wrap input[type=range]::-webkit-slider-runnable-track {
+  background: transparent; height: 22px; border: none;
 }
 .price-slider-wrap input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
@@ -409,16 +414,17 @@ main {
   background: #fff; border: 2px solid var(--wine);
   box-shadow: 0 2px 6px rgba(91,58,74,0.25);
   cursor: pointer; pointer-events: auto;
-  position: relative; z-index: 2;
+  margin-top: 0;
+}
+.price-slider-wrap input[type=range]::-moz-range-track {
+  background: transparent; height: 22px; border: none;
 }
 .price-slider-wrap input[type=range]::-moz-range-thumb {
   width: 22px; height: 22px; border-radius: 50%;
   background: #fff; border: 2px solid var(--wine);
   box-shadow: 0 2px 6px rgba(91,58,74,0.25);
   cursor: pointer; pointer-events: auto;
-}
-.price-slider-wrap input[type=range]::-webkit-slider-runnable-track {
-  background: transparent; height: 3px;
+  box-sizing: border-box;
 }
 .pf-count {
   margin-top: 6px; font-size: 10px; letter-spacing: 0.5px;
@@ -4519,10 +4525,10 @@ for (const wines of Object.values(wineList)) { for (const w of wines) _allExplor
 let wineActiveCategory = Object.keys(wineList)[0];
 let selectedWineId = null;
 
-// Price filter state — compute bounds from full catalogue
-const _allPrices = _allExplorerWines.map(w => w.price).filter(p => typeof p === 'number');
-const PRICE_MIN = Math.floor(Math.min(..._allPrices));
-const PRICE_MAX = Math.ceil(Math.max(..._allPrices));
+// Price filter state — compute bounds from full catalogue (coerce strings to numbers)
+const _allPrices = _allExplorerWines.map(w => Number(w.price)).filter(p => Number.isFinite(p) && p > 0);
+const PRICE_MIN = _allPrices.length ? Math.floor(Math.min(..._allPrices)) : 0;
+const PRICE_MAX = _allPrices.length ? Math.ceil(Math.max(..._allPrices)) : 500;
 let priceFilter = { min: PRICE_MIN, max: PRICE_MAX };
 
 function renderWineExplorerTabs() {
@@ -4605,7 +4611,7 @@ function resetPriceFilter() {
 function renderWineList() {
   const list = document.getElementById('menuList');
   const allWines = wineList[wineActiveCategory];
-  const wines = allWines.filter(w => w.price >= priceFilter.min && w.price <= priceFilter.max);
+  const wines = allWines.filter(w => { const p = Number(w.price); return p >= priceFilter.min && p <= priceFilter.max; });
   const countEl = document.getElementById('pfCount');
   if (countEl) {
     if (wines.length === allWines.length) {
