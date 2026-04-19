@@ -4525,11 +4525,15 @@ for (const wines of Object.values(wineList)) { for (const w of wines) _allExplor
 let wineActiveCategory = Object.keys(wineList)[0];
 let selectedWineId = null;
 
-// Price filter state — compute bounds from full catalogue (coerce strings to numbers)
-const _allPrices = _allExplorerWines.map(w => Number(w.price)).filter(p => Number.isFinite(p) && p > 0);
-const PRICE_MIN = _allPrices.length ? Math.floor(Math.min(..._allPrices)) : 0;
-const PRICE_MAX = _allPrices.length ? Math.ceil(Math.max(..._allPrices)) : 500;
-let priceFilter = { min: PRICE_MIN, max: PRICE_MAX };
+// Price filter state — bounds computed per active category
+function getCategoryPriceBounds(cat) {
+  const wines = wineList[cat] || [];
+  const prices = wines.map(w => Number(w.price)).filter(p => Number.isFinite(p) && p > 0);
+  if (!prices.length) return { min: 0, max: 500 };
+  return { min: Math.floor(Math.min(...prices)), max: Math.ceil(Math.max(...prices)) };
+}
+let priceBounds = getCategoryPriceBounds(wineActiveCategory);
+let priceFilter = { min: priceBounds.min, max: priceBounds.max };
 
 function renderWineExplorerTabs() {
   const tabs = document.getElementById('tabs');
@@ -4541,7 +4545,10 @@ function renderWineExplorerTabs() {
 
 function selectWineCategory(cat) {
   wineActiveCategory = cat;
+  priceBounds = getCategoryPriceBounds(cat);
+  priceFilter = { min: priceBounds.min, max: priceBounds.max };
   renderWineExplorerTabs();
+  renderPriceFilter();
   renderWineList();
 }
 
@@ -4549,20 +4556,21 @@ function renderPriceFilter() {
   const el = document.getElementById('priceFilter');
   if (!el) return;
   if (currentMode !== 'explore') { el.innerHTML = ''; return; }
-  const isDefault = priceFilter.min === PRICE_MIN && priceFilter.max === PRICE_MAX;
-  const maxLabel = priceFilter.max >= PRICE_MAX ? `&euro;${PRICE_MAX}+` : `&euro;${priceFilter.max}`;
+  // Guard: if bounds collapse (single-price category), hide the slider
+  if (priceBounds.max <= priceBounds.min) { el.innerHTML = ''; return; }
+  const isDefault = priceFilter.min === priceBounds.min && priceFilter.max === priceBounds.max;
   el.innerHTML = `
     <div class="price-filter">
       <div class="price-filter-header">
         <span class="pf-label">Price Range</span>
-        <span class="pf-readout">&euro;${priceFilter.min} <span class="pf-sep">&mdash;</span> ${maxLabel}</span>
+        <span class="pf-readout">&euro;${priceFilter.min} <span class="pf-sep">&mdash;</span> &euro;${priceFilter.max}</span>
         <button class="pf-reset" onclick="resetPriceFilter()" ${isDefault ? 'disabled' : ''}>Reset</button>
       </div>
       <div class="price-slider-wrap">
         <div class="price-slider-track"></div>
         <div class="price-slider-range" id="pfRange"></div>
-        <input type="range" id="pfMin" min="${PRICE_MIN}" max="${PRICE_MAX}" step="1" value="${priceFilter.min}" oninput="onPriceSlide('min', this.value)">
-        <input type="range" id="pfMax" min="${PRICE_MIN}" max="${PRICE_MAX}" step="1" value="${priceFilter.max}" oninput="onPriceSlide('max', this.value)">
+        <input type="range" id="pfMin" min="${priceBounds.min}" max="${priceBounds.max}" step="1" value="${priceFilter.min}" oninput="onPriceSlide('min', this.value)">
+        <input type="range" id="pfMax" min="${priceBounds.min}" max="${priceBounds.max}" step="1" value="${priceFilter.max}" oninput="onPriceSlide('max', this.value)">
       </div>
       <div class="pf-count" id="pfCount"></div>
     </div>`;
@@ -4572,9 +4580,9 @@ function renderPriceFilter() {
 function updatePriceRangeBar() {
   const bar = document.getElementById('pfRange');
   if (!bar) return;
-  const span = PRICE_MAX - PRICE_MIN || 1;
-  const leftPct = ((priceFilter.min - PRICE_MIN) / span) * 100;
-  const rightPct = ((priceFilter.max - PRICE_MIN) / span) * 100;
+  const span = priceBounds.max - priceBounds.min || 1;
+  const leftPct = ((priceFilter.min - priceBounds.min) / span) * 100;
+  const rightPct = ((priceFilter.max - priceBounds.min) / span) * 100;
   bar.style.left = leftPct + '%';
   bar.style.right = (100 - rightPct) + '%';
 }
@@ -4593,17 +4601,16 @@ function onPriceSlide(which, val) {
   // Update readout + range bar without full re-render (preserves thumb focus)
   const readout = document.querySelector('#priceFilter .pf-readout');
   if (readout) {
-    const maxLabel = priceFilter.max >= PRICE_MAX ? `&euro;${PRICE_MAX}+` : `&euro;${priceFilter.max}`;
-    readout.innerHTML = `&euro;${priceFilter.min} <span class="pf-sep">&mdash;</span> ${maxLabel}`;
+    readout.innerHTML = `&euro;${priceFilter.min} <span class="pf-sep">&mdash;</span> &euro;${priceFilter.max}`;
   }
   const resetBtn = document.querySelector('#priceFilter .pf-reset');
-  if (resetBtn) resetBtn.disabled = (priceFilter.min === PRICE_MIN && priceFilter.max === PRICE_MAX);
+  if (resetBtn) resetBtn.disabled = (priceFilter.min === priceBounds.min && priceFilter.max === priceBounds.max);
   updatePriceRangeBar();
   renderWineList();
 }
 
 function resetPriceFilter() {
-  priceFilter = { min: PRICE_MIN, max: PRICE_MAX };
+  priceFilter = { min: priceBounds.min, max: priceBounds.max };
   renderPriceFilter();
   renderWineList();
 }
