@@ -669,6 +669,36 @@ main {
 }
 .budget-rationale .highlight { color: var(--sage); font-weight: 500; }
 
+/* Cost-Conscious — pale green box (default) */
+.budget-toggle.variant-cost .budget-toggle-header {
+  background: linear-gradient(135deg, rgba(122,139,111,0.10), rgba(122,139,111,0.18));
+}
+.budget-toggle.variant-cost .bt-icon {
+  background: rgba(122,139,111,0.18); color: var(--sage);
+}
+.budget-toggle.variant-cost .budget-wine-price { color: var(--sage); }
+.budget-toggle.variant-cost .budget-rationale .highlight { color: var(--sage); }
+
+/* Value for Money — warm gold */
+.budget-toggle.variant-value .budget-toggle-header {
+  background: linear-gradient(135deg, rgba(196,162,101,0.10), rgba(196,162,101,0.18));
+}
+.budget-toggle.variant-value .bt-icon {
+  background: rgba(196,162,101,0.18); color: var(--gold);
+}
+.budget-toggle.variant-value .budget-wine-price { color: var(--gold); }
+.budget-toggle.variant-value .budget-rationale .highlight { color: var(--gold); }
+
+/* By the Glass — soft wine */
+.budget-toggle.variant-glass .budget-toggle-header {
+  background: linear-gradient(135deg, rgba(91,58,74,0.07), rgba(91,58,74,0.13));
+}
+.budget-toggle.variant-glass .bt-icon {
+  background: rgba(91,58,74,0.13); color: var(--wine);
+}
+.budget-toggle.variant-glass .budget-wine-price { color: var(--wine); }
+.budget-toggle.variant-glass .budget-rationale .highlight { color: var(--wine); }
+
 /* SOMMELIER NOTE */
 .sommelier-note {
   background: linear-gradient(135deg, rgba(91,58,74,0.03), rgba(196,162,101,0.05));
@@ -2119,15 +2149,24 @@ function renderWineCard(w, badge, cls, delay) {
   </div>`;
 }
 
-function renderBudgetDropdown(b, delay) {
+// Variant config for the three secondary tiers
+const _variantConfig = {
+  cost:  { label: 'Cost-Conscious Choice', icon: '&#9827;',  toggleId: 'costToggle'  }, // club suit
+  value: { label: 'Value for Money',       icon: '&#9830;',  toggleId: 'valueToggle' }, // diamond
+  glass: { label: 'By the Glass',          icon: '&#127863;', toggleId: 'glassToggle' } // wine glass
+};
+
+function renderBudgetDropdown(b, delay, variant) {
   if (!b) return '';
+  variant = variant || 'cost';
+  const cfg = _variantConfig[variant];
   const detail = findWineDetail(b);
-  return `<div class="budget-toggle fade-in" style="animation-delay: ${delay}s" id="budgetToggle" onclick="toggleBudget()">
+  return `<div class="budget-toggle variant-${variant} fade-in" style="animation-delay: ${delay}s" id="${cfg.toggleId}" onclick="toggleBudget('${cfg.toggleId}')">
     <div class="budget-toggle-header">
       <div class="bt-left">
-        <div class="bt-icon">&#9827;</div>
+        <div class="bt-icon">${cfg.icon}</div>
         <div>
-          <div class="bt-label">Cost-Conscious Choice</div>
+          <div class="bt-label">${cfg.label}</div>
           <div class="bt-hint">&euro; ${b.price} &middot; ${b.format}</div>
         </div>
       </div>
@@ -2148,8 +2187,100 @@ function renderBudgetDropdown(b, delay) {
   </div>`;
 }
 
-function toggleBudget() {
-  document.getElementById('budgetToggle').classList.toggle('open');
+function toggleBudget(id) {
+  id = id || 'costToggle';
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('open');
+}
+
+// --- Ladder helpers ---------------------------------------------------------
+// Build a wine object compatible with renderBudgetDropdown from an explorer entry.
+// Adds a lightweight rationale so the "Why this wine" box isn't empty.
+function _asLadderWine(w, whyText) {
+  if (!w) return null;
+  return {
+    name: w.name, grape: w.grape, region: w.region, vintage: w.vintage,
+    price: w.price, format: w.format, type: w.type,
+    rationale: whyText,
+    desc: w.desc
+  };
+}
+
+// Pick a mid-tier "Value for Money" bottle: matching type, priced below the
+// primary but above the cheapest tier. Returns 2nd or 3rd cheapest bottle of
+// matching type, excluding the other ladder wines by name.
+function deriveValueWine(primary, excludeNames) {
+  if (!primary) return null;
+  const excl = new Set(excludeNames.filter(Boolean).map(n => n.toLowerCase()));
+  const candidates = [];
+  for (const [cat, wines] of Object.entries(wineList)) {
+    if (cat === 'By the Glass') continue;
+    for (const w of wines) {
+      if (!w || w.type !== primary.type) continue;
+      if (excl.has((w.name || '').toLowerCase())) continue;
+      const p = Number(w.price);
+      if (!Number.isFinite(p) || p <= 0) continue;
+      candidates.push(w);
+    }
+  }
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => Number(a.price) - Number(b.price));
+  // Pick 2nd cheapest if available, else 3rd, else 1st
+  const pick = candidates[1] || candidates[2] || candidates[0];
+  const why = `A thoughtfully priced <span class="highlight">${pick.grape}</span> from ${pick.region} that honours the same style as our top recommendation. At &euro; ${pick.price}, it delivers the character of the pairing without the ceremony.`;
+  return _asLadderWine(pick, why);
+}
+
+// Pick a By-the-Glass pour matching the primary's type
+function deriveGlassPour(primary, excludeNames) {
+  if (!primary) return null;
+  const glasses = wineList['By the Glass'] || [];
+  if (!glasses.length) return null;
+  const excl = new Set(excludeNames.filter(Boolean).map(n => n.toLowerCase()));
+  const sameType = glasses.filter(w => w.type === primary.type && !excl.has((w.name || '').toLowerCase()));
+  const pick = sameType[0] || glasses.find(w => !excl.has((w.name || '').toLowerCase())) || glasses[0];
+  if (!pick) return null;
+  const why = `A <span class="highlight">${pick.grape}</span> pour for those who\'d like a single glass. Keeps the spirit of the pairing without committing to a bottle.`;
+  return _asLadderWine(pick, why);
+}
+
+// Split the hand-curated budget entry by format into (costBottle, glassPour)
+function _splitBudgetByFormat(b) {
+  if (!b) return { costBottle: null, glassPour: null };
+  const fmt = (b.format || '').toLowerCase();
+  if (fmt.includes('glass')) return { costBottle: null, glassPour: b };
+  return { costBottle: b, glassPour: null };
+}
+
+// Given a primary wine and the curated budget entry, produce the three lower
+// tiers: Value for Money, Cost-Conscious, By the Glass.
+function buildLadder(primary, secondary, curatedBudget) {
+  const { costBottle: curatedCost, glassPour: curatedGlass } = _splitBudgetByFormat(curatedBudget);
+  const excludeBase = [primary && primary.name, secondary && secondary.name, curatedBudget && curatedBudget.name];
+
+  const costBottle = curatedCost || (function() {
+    // Derive cheapest bottle of matching type, excluding the known ones
+    const excl = new Set(excludeBase.filter(Boolean).map(n => n.toLowerCase()));
+    let cheapest = null;
+    for (const [cat, wines] of Object.entries(wineList)) {
+      if (cat === 'By the Glass') continue;
+      for (const w of wines) {
+        if (!w || w.type !== primary.type) continue;
+        if (excl.has((w.name || '').toLowerCase())) continue;
+        const p = Number(w.price);
+        if (!Number.isFinite(p) || p <= 0) continue;
+        if (!cheapest || p < Number(cheapest.price)) cheapest = w;
+      }
+    }
+    if (!cheapest) return null;
+    const why = `The most affordable bottle we carry in this style -- a <span class="highlight">${cheapest.grape}</span> from ${cheapest.region} at &euro; ${cheapest.price}. Honest, well-made and a forgiving match.`;
+    return _asLadderWine(cheapest, why);
+  })();
+
+  const glassPour = curatedGlass || deriveGlassPour(primary, [...excludeBase, costBottle && costBottle.name]);
+  const valueWine = deriveValueWine(primary, [...excludeBase, costBottle && costBottle.name, glassPour && glassPour.name]);
+
+  return { valueWine, costBottle, glassPour };
 }
 
 function renderPairing() {
@@ -2182,13 +2313,16 @@ function renderPairing() {
     const p = pairing.primary;
     const s = pairing.secondary;
     const b = budgetWines[id];
+    const { valueWine, costBottle, glassPour } = buildLadder(p, s, b);
     panel.innerHTML = `<div class="pairing-section fade-in">
       <div class="pairing-for">Recommended pairing for</div>
       <div class="pairing-dish-name">${dishName}</div>
       ${renderWineCard(p, "Sommelier's Choice", "primary", 0.1)}
-      ${renderWineCard(s, "Alternative", "secondary", 0.25)}
-      ${renderBudgetDropdown(b, 0.35)}
-      ${pairing.note ? `<div class="sommelier-note fade-in" style="animation-delay: 0.45s">
+      ${renderWineCard(s, "Alternative", "secondary", 0.2)}
+      ${renderBudgetDropdown(valueWine, 0.3, 'value')}
+      ${renderBudgetDropdown(costBottle, 0.35, 'cost')}
+      ${renderBudgetDropdown(glassPour, 0.4, 'glass')}
+      ${pairing.note ? `<div class="sommelier-note fade-in" style="animation-delay: 0.5s">
         <div class="note-label">Sommelier's Note</div>
         <p>${pairing.note}</p>
       </div>` : ''}
@@ -2242,13 +2376,16 @@ function renderPairing() {
 
   const dishTags2 = ids.map(id => `<span class="multi-dish-tag">${findDishName(id)}</span>`);
 
+  const mLadder = buildLadder(primaryWine, secondaryWine, budgetWine);
   panel.innerHTML = `<div class="pairing-section fade-in">
     <div class="pairing-for">Recommended pairing for your selection</div>
     <div class="multi-dishes">${dishTags2.join('<span class="multi-dish-tag"><span class="plus">&</span></span>')}</div>
     ${renderWineCard(primaryWine, "Sommelier's Choice", "primary", 0.1)}
-    ${renderWineCard(secondaryWine, "Alternative", "secondary", 0.25)}
-    ${renderBudgetDropdown(budgetWine, 0.35)}
-    <div class="sommelier-note fade-in" style="animation-delay: 0.45s">
+    ${renderWineCard(secondaryWine, "Alternative", "secondary", 0.2)}
+    ${renderBudgetDropdown(mLadder.valueWine, 0.3, 'value')}
+    ${renderBudgetDropdown(mLadder.costBottle, 0.35, 'cost')}
+    ${renderBudgetDropdown(mLadder.glassPour, 0.4, 'glass')}
+    <div class="sommelier-note fade-in" style="animation-delay: 0.5s">
       <div class="note-label">Multi-Course Pairing Strategy</div>
       <p>${comboNote}</p>
     </div>
